@@ -5,7 +5,8 @@
   const $ = id => document.getElementById(id);
   const fruits = [ ['🍊', '#ffac47'], ['🍉', '#ff668a'], ['🍓', '#ff5279'], ['🥝', '#b5ee66'], ['🍋', '#ffe466'], ['🍎', '#ff6962'], ['🍑', '#ffb997'] ];
   let width, height, running = false, score = 0, lives = 3, elapsed = 0, spawnIn = 0;
-  let objects = [], particles = [], halves = [], labels = [], trail = [], pointer = null;
+  let objects = [], particles = [], halves = [], labels = [], trail = [], splats = [], pointer = null;
+  let combo = 0, comboAt = 0, comboX = 0, comboY = 0, endedAt = 0;
   let lastTime = 0, shake = 0, flash = 0, best = 0, soundOn = false, audio;
   try { best = Number(localStorage.getItem('fruit-frenzy-best')) || 0; } catch (_) { /* Storage is optional. */ }
   const random = (a, b) => a + Math.random() * (b - a);
@@ -22,7 +23,7 @@
     // Scale position, speed, and gravity together so flying fruit keep the same path on the resized screen.
     const sx = width / oldWidth, sy = height / oldHeight, r = fruitRadius();
     for (const obj of [...objects, ...halves]) { obj.x *= sx; obj.vx *= sx; obj.y *= sy; obj.vy *= sy; obj.gravity *= sy; obj.r = r; }
-    for (const p of [pointer, ...trail]) if (p) { p.x *= sx; p.y *= sy; }
+    for (const p of [pointer, ...trail, ...splats]) if (p) { p.x *= sx; p.y *= sy; }
   }
   window.addEventListener('resize', resize); resize();
   function tone(bomb = false) {
@@ -58,14 +59,19 @@
   }
   function start() {
     running = true; score = 0; lives = 3; elapsed = 0; spawnIn = .4;
-    objects = []; particles = []; halves = []; labels = []; trail = []; pointer = null; shake = 0; flash = 0; hudState = '';
+    objects = []; particles = []; halves = []; labels = []; trail = []; splats = []; pointer = null; shake = 0; flash = 0; hudState = ''; combo = 0;
     $('start').hidden = true; $('end').hidden = true; $('hud').hidden = false;
     $('announcement').textContent = 'Game started. Slice fruit and avoid bombs.'; updateHud();
     lastTime = performance.now();
   }
-  $('play').addEventListener('click', start); $('restart').addEventListener('click', start);
+  $('play').addEventListener('click', start);
+  // Ignore SLICE AGAIN briefly after game over, so a tap at the end of a fast swipe can't skip the score screen.
+  $('restart').addEventListener('click', () => { if (performance.now() - endedAt >= 800) start(); });
   function end(reason) {
     if (!running) return;
+    if (reason !== 'bomb') finishCombo(); // a bomb forfeits the combo in progress
+    combo = 0; endedAt = performance.now();
+    $('restart').classList.add('wait'); setTimeout(() => $('restart').classList.remove('wait'), 800);
     // Clear leftover fruit so faded copies don't linger behind the game-over screen.
     running = false; pointer = null; objects = [];
     const record = score > best; best = Math.max(best, score);
@@ -97,12 +103,29 @@
       particles.push({x:obj.x,y:obj.y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,r:random(2,7),life:random(.35,.85),max:.85,color:i % 3 === 0 ? '#fff6c8' : obj.color});
     }
   }
-  function cut(obj) {
+  function cut(obj, angle = 0) {
     obj.dead = true; burst(obj, obj.bomb); tone(obj.bomb);
     if (obj.bomb) { shake = .45; flash = .35; end('bomb'); return; }
     score += 10; updateHud();
     labels.push({x:obj.x,y:obj.y,text:'+10',life:.75,color:obj.color});
-    for (const side of [-1, 1]) halves.push({...obj,side,vx:obj.vx + side * 110,vy:-100,life:.65});
+    // A juice stain that fades from the arena floor: one main blob plus a few droplets.
+    const blobs = [[0, 0, obj.r * .55]];
+    for (let i = 0; i < 6; i++) { const a = random(0, Math.PI * 2), d = random(.8, 1.7) * obj.r; blobs.push([Math.cos(a) * d, Math.sin(a) * d, random(.1, .28) * obj.r]); }
+    splats.push({x:obj.x, y:obj.y, blobs, color:obj.color, life:2.5}); if (splats.length > 30) splats.shift();
+    // Split along the swipe: the cut line follows the swipe angle and the halves fly apart at right angles to it.
+    // clip is the cut line's angle relative to the fruit's own rotation, so the line turns with the spinning half.
+    const nx = Math.sin(angle), ny = -Math.cos(angle), clip = angle - Math.PI / 2 - obj.angle;
+    for (const side of [-1, 1]) halves.push({...obj,side,clip,vx:obj.vx + side * 110 * nx,vy:-100 + side * 110 * ny,life:.65});
+    combo++; comboAt = elapsed; comboX = obj.x; comboY = obj.y;
+  }
+  // Slicing 3+ fruit in one quick swipe earns a bonus of 10 points per fruit in the combo.
+  function finishCombo() {
+    if (combo >= 3) {
+      const bonus = combo * 10; score += bonus; updateHud(); tone();
+      labels.push({x:Math.max(110,Math.min(width-110,comboX)),y:comboY - 70,text:`COMBO ×${combo}  +${bonus}`,life:1.3,color:'#b5ee66',size:28});
+      $('announcement').textContent = `Combo of ${combo}! Plus ${bonus} points.`;
+    }
+    combo = 0;
   }
   // The part of the canvas the player can see. On short windows the canvas runs past the bottom of the browser window.
   function visibleArea() {
@@ -127,10 +150,11 @@
     if (!running || !pointer || pointer.id !== event.pointerId) return;
     const next = point(event), area = visibleArea();
     // Pointer capture keeps reporting drags outside the canvas and the window, so segmentHits ignores anything out of sight.
-    for (const obj of objects) if (!obj.dead && segmentHits(pointer,next,obj,area)) { cut(obj); if (!running) break; }
+    const angle = Math.atan2(next.y - pointer.y, next.x - pointer.x);
+    for (const obj of objects) if (!obj.dead && segmentHits(pointer,next,obj,area)) { cut(obj, angle); if (!running) break; }
     if (running) { pointer = {id:event.pointerId,...next}; trail.push(next); if (trail.length > 40) trail.shift(); }
   });
-  const release = event => { if (pointer?.id === event.pointerId) pointer = null; };
+  const release = event => { if (pointer?.id === event.pointerId) { pointer = null; if (running) finishCombo(); } };
   canvas.addEventListener('pointerup',release); canvas.addEventListener('pointercancel',release); canvas.addEventListener('lostpointercapture',release);
   document.addEventListener('visibilitychange', () => { lastTime = performance.now(); pointer = null; trail = []; });
   // Each fruit is pre-rendered once per emoji and size into a fully opaque image: boosted colour, a dark outline inside a
@@ -168,7 +192,7 @@
   function drawFruit(obj, half = false) {
     const {image, size} = sprite(obj.emoji, obj.r, obj.color);
     ctx.save(); ctx.translate(obj.x,obj.y); ctx.rotate(obj.angle); ctx.globalAlpha = half ? Math.min(1,obj.life * 2) : 1;
-    if (half) { ctx.beginPath(); ctx.rect(obj.side < 0 ? -obj.r*1.4 : 0,-obj.r*1.5,obj.r*1.4,obj.r*3); ctx.clip(); }
+    if (half) { ctx.rotate(obj.clip); ctx.beginPath(); ctx.rect(obj.side < 0 ? -obj.r*1.8 : 0,-obj.r*1.8,obj.r*1.8,obj.r*3.6); ctx.clip(); ctx.rotate(-obj.clip); }
     ctx.shadowColor = obj.color + '55'; ctx.shadowBlur = 20;
     ctx.drawImage(image, -size / 2, -size / 2, size, size); ctx.restore();
   }
@@ -188,6 +212,9 @@
       }
     }
     objects = objects.filter(obj => !obj.dead);
+    if (running && combo && elapsed - comboAt > .3) finishCombo(); // the combo ends after a short pause in slicing
+    for (const s of splats) s.life -= dt;
+    splats = splats.filter(s => s.life > 0);
     for (const obj of halves) { obj.life -= dt; obj.x += obj.vx*dt; obj.y += obj.vy*dt; obj.vy += 700*dt; obj.angle += obj.side * dt * 3; }
     halves = halves.filter(obj => obj.life > 0);
     for (const p of particles) { p.life -= dt; p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 550*dt; }
@@ -199,11 +226,13 @@
   function draw() {
     ctx.clearRect(0,0,width,height); ctx.save();
     if (shake > 0) ctx.translate(random(-7,7)*shake*2,random(-7,7)*shake*2);
+    for (const s of splats) { ctx.globalAlpha = .4 * Math.min(1, s.life); ctx.fillStyle = s.color; for (const [dx, dy, r] of s.blobs) { ctx.beginPath(); ctx.arc(s.x + dx, s.y + dy, r, 0, Math.PI * 2); ctx.fill(); } }
+    ctx.globalAlpha = 1;
     for (const obj of objects) drawFruit(obj);
     for (const obj of halves) drawFruit(obj,true);
     for (const p of particles) { ctx.globalAlpha = Math.max(0,p.life/p.max); ctx.fillStyle=p.color; ctx.beginPath(); ctx.ellipse(p.x,p.y,p.r,p.r*.7,Math.atan2(p.vy,p.vx),0,Math.PI*2); ctx.fill(); }
     ctx.globalAlpha=1;
-    for (const label of labels) { ctx.globalAlpha=Math.max(0,Math.min(1,label.life*3)); ctx.fillStyle=label.color; ctx.font='bold 22px Arial'; ctx.textAlign='center'; ctx.fillText(label.text,label.x,label.y); }
+    for (const label of labels) { ctx.globalAlpha=Math.max(0,Math.min(1,label.life*3)); ctx.fillStyle=label.color; ctx.font=`bold ${label.size || 22}px Arial`; ctx.textAlign='center'; if (label.size) { ctx.lineWidth=6; ctx.lineJoin='round'; ctx.strokeStyle='#12132b'; ctx.strokeText(label.text,label.x,label.y); } ctx.fillText(label.text,label.x,label.y); }
     ctx.globalAlpha=1;
     if(trail.length>1) { ctx.lineCap='round'; ctx.lineJoin='round'; for(let i=1;i<trail.length;i++){ctx.globalAlpha=trail[i].life/.18;ctx.strokeStyle=i%2?'#b5ee66':'#80f6e7';ctx.shadowColor='#b5ee66';ctx.shadowBlur=15;ctx.lineWidth=2+7*i/trail.length;ctx.beginPath();ctx.moveTo(trail[i-1].x,trail[i-1].y);ctx.lineTo(trail[i].x,trail[i].y);ctx.stroke();} }
     ctx.restore();
