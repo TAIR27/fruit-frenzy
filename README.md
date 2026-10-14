@@ -7,7 +7,7 @@ A colorful Fruit Ninja-style game made with HTML, CSS, and vanilla JavaScript. E
 1. Open this project folder on your computer.
 2. Double-click `index.html` to open it in a modern browser, such as Chrome, Firefox, Edge, or Safari.
 3. Click **LET’S SLICE**. Hold the mouse button and drag through flying fruit. On a touchscreen, press and drag your finger.
-4. Each fruit earns 10 points. Missing three fruits or slicing a bomb ends the game. Survive for 60 seconds to finish a round.
+4. Each fruit earns 10 points. Slice 3 or more fruits in one quick swipe for a combo bonus of 10 extra points per fruit. Missing three fruits or slicing a bomb ends the game. Survive for 60 seconds to finish a round.
 5. Click **SLICE AGAIN** to restart. Use the sound button for optional synthesized sound effects.
 
 The game pauses while its browser tab is hidden. Your best score is saved locally when your browser permits it. Emoji fruit appearance varies slightly by operating system.
@@ -22,13 +22,14 @@ The game pauses while its browser tab is hidden. Your best score is saved locall
 
 ## Quick manual checks
 
-- Start a game and drag across a fruit: the score increases by 10, with fruit halves, particles, and a glowing trail.
+- Start a game and drag across a fruit: the score increases by 10, with particles, a glowing trail, a fading juice splat, and fruit halves that split along the direction of your swipe.
+- Slice 3 fruits in one quick swipe: a COMBO ×3 +30 label appears and the score increases by 60 in total. Pausing for a moment mid-swipe starts a new combo.
 - Let a fruit fall: one heart dims. The third missed fruit ends the game.
 - Slice a bomb: the game ends immediately.
 - Slice a bomb, then start a new round: the fruit are fully visible, with bright colors and outlines.
 - Drag below the bottom edge of the game or the browser window: fruit and bombs you can't see can't be sliced. Also try a short browser window, where the bottom of the game is cut off.
 - Finish a round: the timer counts down from 60 and ends the game at zero.
-- Restart: the score, timer, lives, and fruit reset.
+- Restart: the score, timer, lives, and fruit reset. SLICE AGAIN is dimmed and ignores clicks for a moment right after the game ends.
 - Game over: the end screen shows no faded leftover fruit behind the text.
 - Try a narrow window or phone: the game fits the screen and supports touch dragging.
 - Resize the window during a round: flying fruit keep their path and stay on screen.
