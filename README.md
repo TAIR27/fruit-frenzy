@@ -25,9 +25,11 @@ The game pauses while its browser tab is hidden. Your best score is saved locall
 - Start a game and drag across a fruit: the score increases by 10, with fruit halves, particles, and a glowing trail.
 - Let a fruit fall: one heart dims. The third missed fruit ends the game.
 - Slice a bomb: the game ends immediately.
+- Drag below the bottom edge of the game: fruit and bombs that haven't appeared yet can't be sliced.
 - Finish a round: the timer counts down from 60 and ends the game at zero.
 - Restart: the score, timer, lives, and fruit reset.
 - Try a narrow window or phone: the game fits the screen and supports touch dragging.
+- Resize the window during a round: flying fruit keep their path and stay on screen.
 - Toggle sound, switch tabs, and return: audio is optional and hidden tabs pause gameplay.
 
 ## Deploy on GitHub Pages
