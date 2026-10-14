@@ -101,13 +101,20 @@
     labels.push({x:obj.x,y:obj.y,text:'+10',life:.75,color:obj.color});
     for (const side of [-1, 1]) halves.push({...obj,side,vx:obj.vx + side * 110,vy:-100,life:.65});
   }
-  function segmentHits(a, b, obj) {
+  // The part of the canvas the player can see. On short windows the canvas runs past the bottom of the browser window.
+  function visibleArea() {
+    const rect = canvas.getBoundingClientRect();
+    return {left:Math.max(0,-rect.left), top:Math.max(0,-rect.top), right:Math.min(width,window.innerWidth-rect.left), bottom:Math.min(height,window.innerHeight-rect.top)};
+  }
+  const inside = (p, area) => p.x >= area.left && p.x <= area.right && p.y >= area.top && p.y <= area.bottom;
+  function segmentHits(a, b, obj, area) {
     const dx = b.x - a.x, dy = b.y - a.y;
     const length = dx * dx + dy * dy;
     const t = length ? Math.max(0, Math.min(1, ((obj.x-a.x)*dx+(obj.y-a.y)*dy)/length)) : 0;
-    return Math.hypot(obj.x-a.x-t*dx,obj.y-a.y-t*dy) <= obj.r + 3;
+    const hit = {x:a.x+t*dx, y:a.y+t*dy};
+    // Only slice fruit the player can see, at a point of the swipe the player can see.
+    return inside(obj, area) && inside(hit, area) && Math.hypot(obj.x-hit.x,obj.y-hit.y) <= obj.r + 3;
   }
-  const onScreen = obj => obj.y - obj.r < height && obj.y + obj.r > 0 && obj.x + obj.r > 0 && obj.x - obj.r < width;
   function point(event) { const rect = canvas.getBoundingClientRect(); return {x:event.clientX-rect.left,y:event.clientY-rect.top,life:.18}; }
   canvas.addEventListener('pointerdown', event => {
     if (!running || pointer || (event.pointerType === 'mouse' && event.button !== 0)) return;
@@ -115,9 +122,9 @@
   });
   canvas.addEventListener('pointermove', event => {
     if (!running || !pointer || pointer.id !== event.pointerId) return;
-    const next = point(event);
-    // Pointer capture keeps reporting drags outside the canvas, so ignore fruit and bombs that are not visible yet.
-    for (const obj of objects) if (!obj.dead && onScreen(obj) && segmentHits(pointer,next,obj)) { cut(obj); if (!running) break; }
+    const next = point(event), area = visibleArea();
+    // Pointer capture keeps reporting drags outside the canvas and the window, so segmentHits ignores anything out of sight.
+    for (const obj of objects) if (!obj.dead && segmentHits(pointer,next,obj,area)) { cut(obj); if (!running) break; }
     if (running) { pointer = {id:event.pointerId,...next}; trail.push(next); if (trail.length > 40) trail.shift(); }
   });
   const release = event => { if (pointer?.id === event.pointerId) pointer = null; };
