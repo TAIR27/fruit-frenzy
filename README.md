@@ -25,6 +25,7 @@ The game pauses while its browser tab is hidden. Your best score is saved locall
 - Start a game and drag across a fruit: the score increases by 10, with fruit halves, particles, and a glowing trail.
 - Let a fruit fall: one heart dims. The third missed fruit ends the game.
 - Slice a bomb: the game ends immediately.
+- Slice a bomb, then start a new round: the fruit are fully visible, with bright colors and outlines.
 - Drag below the bottom edge of the game or the browser window: fruit and bombs you can't see can't be sliced. Also try a short browser window, where the bottom of the game is cut off.
 - Finish a round: the timer counts down from 60 and ends the game at zero.
 - Restart: the score, timer, lives, and fruit reset.
