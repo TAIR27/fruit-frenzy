@@ -64,7 +64,8 @@
   $('play').addEventListener('click', start); $('restart').addEventListener('click', start);
   function end(reason) {
     if (!running) return;
-    running = false; pointer = null;
+    // Clear leftover fruit so faded copies don't linger behind the game-over screen.
+    running = false; pointer = null; objects = [];
     const record = score > best; best = Math.max(best, score);
     try { localStorage.setItem('fruit-frenzy-best', best); } catch (_) { /* Optional persistence. */ }
     $('end-title').textContent = reason === 'bomb' ? 'Oh, snap!' : score >= 300 ? 'Juice legend!' : 'Nice slicing!';
@@ -131,7 +132,7 @@
   canvas.addEventListener('pointerup',release); canvas.addEventListener('pointercancel',release); canvas.addEventListener('lostpointercapture',release);
   document.addEventListener('visibilitychange', () => { lastTime = performance.now(); pointer = null; trail = []; });
   function drawFruit(obj, half = false) {
-    ctx.save(); ctx.translate(obj.x,obj.y); ctx.rotate(obj.angle); ctx.globalAlpha = half ? Math.min(1,obj.life * 2) : running ? 1 : .25;
+    ctx.save(); ctx.translate(obj.x,obj.y); ctx.rotate(obj.angle); ctx.globalAlpha = half ? Math.min(1,obj.life * 2) : 1;
     if (half) { ctx.beginPath(); ctx.rect(obj.side < 0 ? -obj.r*1.4 : 0,-obj.r*1.5,obj.r*1.4,obj.r*3); ctx.clip(); }
     ctx.shadowColor = obj.color + '55'; ctx.shadowBlur = 20;
     ctx.font = `${obj.r * 1.95}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
