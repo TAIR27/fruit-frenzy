@@ -10,12 +10,14 @@
   try { best = Number(localStorage.getItem('fruit-frenzy-best')) || 0; } catch (_) { /* Storage is optional. */ }
   const random = (a, b) => a + Math.random() * (b - a);
   const fruitRadius = () => Math.max(24, Math.min(34, width * .055));
+  const sprites = new Map(); // pre-rendered fruit images, see sprite()
   function resize() {
     const oldWidth = width || canvas.clientWidth, oldHeight = height || canvas.clientHeight;
     width = canvas.clientWidth; height = canvas.clientHeight;
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    sprites.clear(); // fruit size and pixel ratio may have changed
     if (!oldWidth || !oldHeight || !width || !height) return;
     // Scale position, speed, and gravity together so flying fruit keep the same path on the resized screen.
     const sx = width / oldWidth, sy = height / oldHeight, r = fruitRadius();
@@ -64,7 +66,8 @@
   $('play').addEventListener('click', start); $('restart').addEventListener('click', start);
   function end(reason) {
     if (!running) return;
-    running = false; pointer = null;
+    // Clear leftover fruit so faded copies don't linger behind the game-over screen.
+    running = false; pointer = null; objects = [];
     const record = score > best; best = Math.max(best, score);
     try { localStorage.setItem('fruit-frenzy-best', best); } catch (_) { /* Optional persistence. */ }
     $('end-title').textContent = reason === 'bomb' ? 'Oh, snap!' : score >= 300 ? 'Juice legend!' : 'Nice slicing!';
@@ -130,12 +133,44 @@
   const release = event => { if (pointer?.id === event.pointerId) pointer = null; };
   canvas.addEventListener('pointerup',release); canvas.addEventListener('pointercancel',release); canvas.addEventListener('lostpointercapture',release);
   document.addEventListener('visibilitychange', () => { lastTime = performance.now(); pointer = null; trail = []; });
+  // Each fruit is pre-rendered once per emoji and size into a fully opaque image: boosted colour, a dark outline inside a
+  // neon rim in the fruit's colour, shading toward the bottom, and a glossy highlight. Drawing an image (instead of
+  // fillText every frame) also means no leftover fillStyle can ever fade the fruit.
+  function sprite(emoji, r, color) {
+    const ratio = Math.min(window.devicePixelRatio || 1, 2), key = emoji + r + ratio;
+    if (sprites.has(key)) return sprites.get(key);
+    const size = Math.ceil(r * 3.4), px = Math.ceil(size * ratio);
+    const layer = () => { const c = document.createElement('canvas'); c.width = c.height = px; return [c, c.getContext('2d')]; };
+    const [fruit, f] = layer();
+    f.scale(ratio, ratio); f.font = `${r * 1.95}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+    f.textAlign = 'center'; f.textBaseline = 'middle'; f.fillStyle = '#000'; f.filter = 'saturate(1.4) contrast(1.08)';
+    f.fillText(emoji, size / 2, size / 2 + 3); f.filter = 'none';
+    // Shading and highlight, painted only on the fruit's own pixels.
+    f.globalCompositeOperation = 'source-atop';
+    const shade = f.createLinearGradient(0, size / 2 - r, 0, size / 2 + r);
+    shade.addColorStop(.45, 'rgba(20,10,40,0)'); shade.addColorStop(1, 'rgba(20,10,40,.3)');
+    f.fillStyle = shade; f.fillRect(0, 0, size, size);
+    const hx = size / 2 - r * .35, hy = size / 2 - r * .4, shine = f.createRadialGradient(hx, hy, 0, hx, hy, r * .6);
+    shine.addColorStop(0, 'rgba(255,255,255,.55)'); shine.addColorStop(1, 'rgba(255,255,255,0)');
+    f.fillStyle = shine; f.fillRect(0, 0, size, size);
+    // Outlines: the fruit's silhouette in a solid colour, stamped in a ring behind it.
+    const silhouette = fill => { const [c, g] = layer(); g.drawImage(fruit, 0, 0); g.globalCompositeOperation = 'source-in'; g.fillStyle = fill; g.fillRect(0, 0, px, px); return c; };
+    const [out, o] = layer();
+    for (const [fill, width] of [[color, 3.5], ['#14102a', 1.6]]) {
+      const ring = silhouette(fill), d = width * ratio;
+      for (let a = 0; a < 16; a++) o.drawImage(ring, Math.cos(a * Math.PI / 8) * d, Math.sin(a * Math.PI / 8) * d);
+    }
+    o.drawImage(fruit, 0, 0);
+    const result = {image: out, size};
+    sprites.set(key, result);
+    return result;
+  }
   function drawFruit(obj, half = false) {
-    ctx.save(); ctx.translate(obj.x,obj.y); ctx.rotate(obj.angle); ctx.globalAlpha = half ? Math.min(1,obj.life * 2) : running ? 1 : .25;
+    const {image, size} = sprite(obj.emoji, obj.r, obj.color);
+    ctx.save(); ctx.translate(obj.x,obj.y); ctx.rotate(obj.angle); ctx.globalAlpha = half ? Math.min(1,obj.life * 2) : 1;
     if (half) { ctx.beginPath(); ctx.rect(obj.side < 0 ? -obj.r*1.4 : 0,-obj.r*1.5,obj.r*1.4,obj.r*3); ctx.clip(); }
     ctx.shadowColor = obj.color + '55'; ctx.shadowBlur = 20;
-    ctx.font = `${obj.r * 1.95}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(obj.emoji,0,3); ctx.restore();
+    ctx.drawImage(image, -size / 2, -size / 2, size, size); ctx.restore();
   }
   function update(dt) {
     if (shake > 0) shake -= dt;
@@ -172,7 +207,8 @@
     ctx.globalAlpha=1;
     if(trail.length>1) { ctx.lineCap='round'; ctx.lineJoin='round'; for(let i=1;i<trail.length;i++){ctx.globalAlpha=trail[i].life/.18;ctx.strokeStyle=i%2?'#b5ee66':'#80f6e7';ctx.shadowColor='#b5ee66';ctx.shadowBlur=15;ctx.lineWidth=2+7*i/trail.length;ctx.beginPath();ctx.moveTo(trail[i-1].x,trail[i-1].y);ctx.lineTo(trail[i].x,trail[i].y);ctx.stroke();} }
     ctx.restore();
-    if(flash>0){ctx.fillStyle=`rgba(255,115,80,${flash})`;ctx.fillRect(0,0,width,height);}
+    // Keep the flash colour inside save/restore: a leftover near-transparent fillStyle used to fade every fruit drawn afterwards.
+    if(flash>0){ctx.save();ctx.fillStyle=`rgba(255,115,80,${flash})`;ctx.fillRect(0,0,width,height);ctx.restore();}
   }
   function frame(time) {
     // Advance by real elapsed time (never negative, capped after long stalls) so the 60-second timer stays accurate on slow devices.
